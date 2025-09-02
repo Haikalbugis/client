@@ -1,40 +1,63 @@
-use isahc::{AsyncReadResponseExt, HttpClient};
+use isahc::{
+    AsyncReadResponseExt, HttpClient, Request,
+    http::{HeaderName, HeaderValue},
+};
 use serde_json::Value;
-use std::{collections::HashMap, error::Error};
+use std::{collections::HashMap, error::Error, str::FromStr};
 
 #[derive(Clone)]
 pub struct ApiClient {
     client: HttpClient,
+    default_headers: HashMap<String, String>,
     base_url: String,
 }
 
 impl ApiClient {
     pub fn new(
         base_url: String,
-        extra_headers: Option<HashMap<String, String>>,
+        default_headers: Option<HashMap<String, String>>,
     ) -> Result<Self, Box<dyn Error>> {
-        let mut builder = HttpClient::builder();
-
-        if let Some(hmap) = extra_headers {
-            let headers: Vec<(String, String)> = hmap.into_iter().map(|(k, v)| (k, v)).collect();
-            builder = builder.default_headers(headers);
-        }
+        let client = HttpClient::builder().build()?;
 
         Ok(Self {
-            client: builder.build()?,
-            base_url: base_url.to_string(),
+            client,
+            default_headers: default_headers.unwrap_or_default(),
+            base_url,
         })
     }
 
-    pub async fn post_async_json(&self, path: &str, body: String) -> Result<Value, Box<dyn Error>> {
+    pub async fn post_async_json(
+        &self,
+        path: &str,
+        body: String,
+        extra_headers: Option<HashMap<String, String>>,
+    ) -> Result<Value, Box<dyn Error>> {
         let url = self.format_url(path);
-        let mut res = self.client.post_async(url, body).await?;
 
-        if res.status() == 200 {
+        let mut req = Request::post(&url).body(body)?;
+
+        {
+            // insert default headers
+            let headers = req.headers_mut();
+            for (k, v) in &self.default_headers {
+                headers.insert(HeaderName::from_str(k)?, HeaderValue::from_str(v)?);
+            }
+
+            // insert extra headers
+            if let Some(extra) = extra_headers {
+                for (k, v) in extra {
+                    headers.insert(HeaderName::from_str(&k)?, HeaderValue::from_str(&v)?);
+                }
+            }
+        }
+
+        let mut res = self.client.send_async(req).await?;
+
+        if res.status().is_success() {
             let json: Value = res.json().await?;
             Ok(json)
         } else {
-            panic!("{:?}", res.text().await)
+            Err(format!("Request failed: {:?}", res.text().await?).into())
         }
     }
 
