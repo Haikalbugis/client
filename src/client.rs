@@ -3,54 +3,36 @@ use isahc::{
     http::{HeaderName, HeaderValue},
 };
 use serde_json::Value;
-use std::{collections::HashMap, error::Error, str::FromStr};
+use std::{
+    collections::HashMap,
+    error::Error,
+    str::FromStr,
+    sync::{Arc, RwLock},
+};
 
 #[derive(Clone)]
 pub struct ApiClient {
     client: HttpClient,
-    default_headers: HashMap<String, String>,
+    headers: Arc<RwLock<HashMap<String, String>>>,
     base_url: String,
 }
 
 impl ApiClient {
-    pub fn new(
-        base_url: String,
-        default_headers: Option<HashMap<String, String>>,
-    ) -> Result<Self, Box<dyn Error>> {
+    pub fn new(base_url: String) -> Result<Self, Box<dyn Error>> {
         let client = HttpClient::builder().build()?;
 
         Ok(Self {
             client,
-            default_headers: default_headers.unwrap_or_default(),
             base_url,
+            headers: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
-    pub async fn post_async_json(
-        &self,
-        path: &str,
-        body: String,
-        extra_headers: Option<HashMap<String, String>>,
-    ) -> Result<Value, Box<dyn Error>> {
+    pub async fn post_async_json(&self, path: &str, body: String) -> Result<Value, Box<dyn Error>> {
         let url = self.format_url(path);
 
         let mut req = Request::post(&url).body(body)?;
-
-        {
-            // insert default headers
-            let headers = req.headers_mut();
-            for (k, v) in &self.default_headers {
-                headers.insert(HeaderName::from_str(k)?, HeaderValue::from_str(v)?);
-            }
-
-            // insert extra headers
-            if let Some(extra) = extra_headers {
-                for (k, v) in extra {
-                    headers.insert(HeaderName::from_str(&k)?, HeaderValue::from_str(&v)?);
-                }
-            }
-        }
-
+        self.apply_headers(&mut req)?;
         let mut res = self.client.send_async(req).await?;
 
         if res.status().is_success() {
@@ -72,6 +54,22 @@ impl ApiClient {
         let json: Value = res.json().await?;
 
         Ok(json)
+    }
+
+    pub fn set_header(&self, key: &str, value: &str) {
+        let mut headers = self.headers.write().unwrap();
+        headers.insert(key.to_string(), value.to_string());
+    }
+
+    fn apply_headers(&self, req: &mut Request<String>) -> Result<(), Box<dyn Error>> {
+        let headers_map = self.headers.read().unwrap();
+        let req_headers = req.headers_mut();
+
+        for (k, v) in headers_map.iter() {
+            req_headers.insert(HeaderName::from_str(k)?, HeaderValue::from_str(v)?);
+        }
+
+        Ok(())
     }
 
     fn format_url(&self, path: &str) -> String {
