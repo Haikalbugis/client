@@ -45,15 +45,17 @@ impl ApiClient {
 
     pub async fn get_async_json(&self, path: &str) -> Result<Value, Box<dyn Error>> {
         let url = self.format_url(path);
-        let mut res = self.client.get_async(url).await?;
 
-        if res.status() == 403 {
-            return Err("just a moment...".into());
+        let mut req = Request::get(&url).body(())?;
+        self.apply_headers(&mut req)?;
+        let mut res = self.client.send_async(req).await?;
+
+        if res.status().is_success() {
+            let json: Value = res.json().await?;
+            Ok(json)
+        } else {
+            Err(format!("Request failed: {:?}", res.text().await?).into())
         }
-
-        let json: Value = res.json().await?;
-
-        Ok(json)
     }
 
     pub fn set_header(&self, key: &str, value: &str) {
@@ -61,7 +63,7 @@ impl ApiClient {
         headers.insert(key.to_string(), value.to_string());
     }
 
-    fn apply_headers(&self, req: &mut Request<String>) -> Result<(), Box<dyn Error>> {
+    fn apply_headers<T>(&self, req: &mut Request<T>) -> Result<(), Box<dyn Error>> {
         let headers_map = self.headers.read().unwrap();
         let req_headers = req.headers_mut();
 
