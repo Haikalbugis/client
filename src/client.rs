@@ -10,7 +10,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ApiClient {
     client: HttpClient,
     headers: Arc<RwLock<HashMap<String, String>>>,
