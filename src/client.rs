@@ -50,11 +50,15 @@ impl ApiClient {
         self.apply_headers(&mut req)?;
         let mut res = self.client.send_async(req).await?;
 
+        let text = res.text().await?;
+
         if res.status().is_success() {
-            let json: Value = res.json().await?;
-            Ok(json)
+            match serde_json::from_str::<Value>(&text) {
+                Ok(json) => return Ok(json),
+                Err(_) => return Ok(serde_json::Value::String(text)),
+            };
         } else {
-            Err(format!("Request failed: {:?}", res.text().await?).into())
+            Err(format!("Request failed: {:?}", text).into())
         }
     }
 
