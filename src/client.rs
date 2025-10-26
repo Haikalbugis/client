@@ -43,7 +43,7 @@ impl ApiClient {
                 Err(_) => return Ok(serde_json::Value::String(text)),
             };
         } else {
-            Err(format!("Request failed: {:?}", res.text().await?).into())
+            Err(format!("Request failed: {:?}", text).into())
         }
     }
 
