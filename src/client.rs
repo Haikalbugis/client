@@ -1,3 +1,5 @@
+use anyhow::Result;
+use anyhow::anyhow;
 use isahc::{
     AsyncReadResponseExt, HttpClient, Request,
     http::{HeaderName, HeaderValue},
@@ -5,7 +7,6 @@ use isahc::{
 use serde_json::Value;
 use std::{
     collections::HashMap,
-    error::Error,
     str::FromStr,
     sync::{Arc, RwLock},
 };
@@ -18,7 +19,7 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
-    pub fn new(base_url: String) -> Result<Self, Box<dyn Error>> {
+    pub fn new(base_url: String) -> Result<Self> {
         let client = HttpClient::builder().build()?;
 
         Ok(Self {
@@ -28,7 +29,7 @@ impl ApiClient {
         })
     }
 
-    pub async fn post_async_json(&self, path: &str, body: String) -> Result<Value, Box<dyn Error>> {
+    pub async fn post_async_json(&self, path: &str, body: String) -> Result<Value> {
         let url = self.format_url(path);
 
         let mut req = Request::post(&url).body(body)?;
@@ -43,11 +44,11 @@ impl ApiClient {
                 Err(_) => return Ok(serde_json::Value::String(text)),
             };
         } else {
-            Err(format!("Request failed: {:?}", text).into())
+            Err(anyhow!("Request failed: {:?}", text))
         }
     }
 
-    pub async fn get_async_json(&self, path: &str) -> Result<Value, Box<dyn Error>> {
+    pub async fn get_async_json(&self, path: &str) -> Result<Value> {
         let url = self.format_url(path);
 
         let mut req = Request::get(&url).body(())?;
@@ -62,7 +63,7 @@ impl ApiClient {
                 Err(_) => return Ok(serde_json::Value::String(text)),
             };
         } else {
-            Err(format!("Request failed: {:?}", text).into())
+            Err(anyhow!("Request failed: {:?}", text))
         }
     }
 
@@ -71,7 +72,7 @@ impl ApiClient {
         headers.insert(key.to_string(), value.to_string());
     }
 
-    fn apply_headers<T>(&self, req: &mut Request<T>) -> Result<(), Box<dyn Error>> {
+    fn apply_headers<T>(&self, req: &mut Request<T>) -> Result<()> {
         let headers_map = self.headers.read().unwrap();
         let req_headers = req.headers_mut();
 
